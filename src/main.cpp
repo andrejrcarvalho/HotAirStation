@@ -1,40 +1,77 @@
 #include <Arduino.h>
 
 #include "config.h"
-#include "max6675.h"
 #include "screen.h"
+#include "hotAirGun.h"
 
-MAX6675 max6675(MAX6675_SCK, MAX6675_CS, MAX6675_SO);
-unsigned long targetTime = 0;
 Screen screen;
 Settings settings;
+HotAirGun hotAirgun;
+
+bool zeroCross = false;
+
+void zeroCrossing();
 
 void setup() {
   Serial.begin(9600);
   Serial.println("Starting....");
+  
   setupPinModes();
-  targetTime = millis() + 1000;
-  settings.loadFromEEPROM();
-  screen.begin(&settings);
+  
+  // Stop interrupts for till make the settings
+  noInterrupts();
+
+  // Setup Timer
+  TCCR2A = 0;
+  TCCR2A |= (1 << WGM21);  // set the CTC (Clear Timer on Compare) mode for
+                           // timer0 with OCRA as top
+  TCCR2B = 0;
+  TCCR2B |= (1 << CS20) | (1 << CS21) | (1 << CS22);  // Set prescaler to 1024
+  TIMSK2 |= (1 << OCIE2A);  // activate timer compare match interrupt for OCR0A
+                            // and OCR0B
+
+  // Setup Interrupt to detect zero crossing
+  attachInterrupt(digitalPinToInterrupt(ZEROCORSS_PIN), zeroCrossing, RISING);
   attachInterrupt(digitalPinToInterrupt(ENCODER_CLK), encoderInterrupt, CHANGE);
+  // Activate again the interrupt
+  interrupts();
+
+  
+  settings.loadFromEEPROM();
+
+  screen.begin(&settings);
+  hotAirgun.begin(&settings);
+
+  hotAirgun.heaterOn();
+  
 }
 
+  String temp = "";
 void loop() {
-  String a = "asdasd";
-  screen.tic(&a);
-  if (targetTime > millis()) {
-    float temperature = max6675.readCelsius();
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.println(F("°C "));
-    targetTime = millis() + 1000;
-  }
+  temp = String(hotAirgun.getTemperature());
+  screen.tic(&temp);
 
-  short gunStatus = digitalRead(GUN_SWITCH);
-  if(gunStatus == HIGH){
-    analogWrite(FUN_CONTROL,128);
-  }else{
-    analogWrite(FUN_CONTROL,0);
-  }
 
+}
+
+
+
+// external interrupt, occurs after every zero crossing point
+void zeroCrossing() {
+  if(hotAirgun.heaterIsOn() ) {
+    TCNT2 = 0;  // clear timer2 counter
+    OCR2A = map(settings.temperature, 100, 0, 18,
+                157);  // set OCR2B value between 10 and 156 (0.64ms - 9.98ms)
+                       // according to the potentiometer value
+    zeroCross = true;     // set zero crossing point flag to 1
+  }
+}
+
+ISR(TIMER2_COMPA_vect) {  // compare match interrupt for OCR0A
+  if (zeroCross) {
+    digitalWrite(TRIAC_PIN, HIGH);
+    delayMicroseconds(100);
+    digitalWrite(TRIAC_PIN, LOW);
+    zeroCross = false;
+  }
 }
