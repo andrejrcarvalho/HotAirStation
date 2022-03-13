@@ -8,9 +8,10 @@
 
 class Settings {
  public:
-  uint8_t temperature = 0;
-  uint8_t pulsePower = 0;
-  unsigned short mode = 0;
+  unsigned long temperature = 0;
+  uint8_t airFlow = 0;
+
+  int power = 0;
 
   void loadFromEEPROM();
 };

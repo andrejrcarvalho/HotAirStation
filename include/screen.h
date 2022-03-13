@@ -16,11 +16,9 @@ class Screen {
   Settings* _settings;
 
   void bootScreen();
-  void mainMenu();
   void mainScreen(String* status);
-  void powerMenu();
-  void modeMenu();
-  void timeMenu();
+  void airFlowMenu();
+  void temperatureMenu();
   void printCentered(uint16_t y, String text);
 
  public:
