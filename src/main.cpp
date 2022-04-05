@@ -1,4 +1,8 @@
 #include <Arduino.h>
+#include <PIDController.h>
+
+
+
 
 #include "config.h"
 #include "screen.h"
@@ -8,7 +12,11 @@ Screen screen;
 Settings settings;
 HotAirGun hotAirgun;
 
+double oldTemp;
+double power = 0;
 bool zeroCross = false;
+
+PIDController pid;
 
 void zeroCrossing();
 
@@ -42,16 +50,29 @@ void setup() {
   screen.begin(&settings);
   hotAirgun.begin(&settings);
 
-  hotAirgun.heaterOn();
+  pid.begin();          // initialize the PID instance
+  pid.setpoint(settings.temperature);    // The "goal" the PID controller tries to "reach"
+  pid.tune(settings.pid.Kp, settings.pid.Ki, settings.pid.Kd);    // Tune the PID, arguments: kP, kI, kD
+  pid.limit(0, 100);    // Limit the PID output between 0 and 255, this is important to get rid of integral windup!
+
+  oldTemp = settings.temperature;
   
 }
 
-  String temp = "";
+
 void loop() {
-  temp = String(hotAirgun.getTemperature());
-  screen.tic(&temp);
-
-
+  if(oldTemp != settings.temperature){
+    pid.setpoint(settings.temperature);
+    oldTemp = settings.temperature;
+  }
+  double curTemp = hotAirgun.getTemperature();
+  power = pid.compute(curTemp);
+  screen.tic(curTemp ,power);
+  if(digitalRead(GUN_SWITCH) == HIGH){
+    hotAirgun.heaterOn();
+  }else{
+    hotAirgun.heaterOff();
+  }
 }
 
 
@@ -60,7 +81,7 @@ void loop() {
 void zeroCrossing() {
   if(hotAirgun.heaterIsOn() ) {
     TCNT2 = 0;  // clear timer2 counter
-    OCR2A = map(settings.temperature, 100, 0, 18,
+    OCR2A = map(power, 100, 0, 20,
                 157);  // set OCR2B value between 10 and 156 (0.64ms - 9.98ms)
                        // according to the potentiometer value
     zeroCross = true;     // set zero crossing point flag to 1
@@ -70,7 +91,7 @@ void zeroCrossing() {
 ISR(TIMER2_COMPA_vect) {  // compare match interrupt for OCR0A
   if (zeroCross) {
     digitalWrite(TRIAC_PIN, HIGH);
-    delayMicroseconds(100);
+    delayMicroseconds(50);
     digitalWrite(TRIAC_PIN, LOW);
     zeroCross = false;
   }

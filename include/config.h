@@ -8,7 +8,7 @@
 #define MAX6675_SCK 7
 
 #define GUN_SWITCH 12
-#define FUN_CONTROL 11
+#define FUN_CONTROL 10
 
 #define ENCODER_CLK 3
 #define ENCODER_DT 5
